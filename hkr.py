@@ -1,3 +1,26 @@
+import subprocess
+import sys
+import logging
+
+# Required dependencies
+REQUIRED_MODULES = [
+    "telebot==0.0.4",
+    "asyncio",
+    "ipaddress"
+]
+
+def install_missing_modules():
+    """Ensure all required modules are installed."""
+    for module in REQUIRED_MODULES:
+        try:
+            __import__(module)
+        except ImportError:
+            logging.warning(f"Module {module} not found. Installing...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", module])
+
+# Install missing modules before running the bot
+install_missing_modules()
+
 import os
 import telebot
 import logging
