@@ -16,7 +16,7 @@ def install_missing_modules():
             __import__(module)
         except ImportError:
             logging.warning(f"Module {module} not found. Installing...")
-            subprocess.check_call([sys.executable, "python -m", "pip", "install", module])
+            subprocess.check_call([sys.executable, "-m", "pip", "install", module])
 
 # Install missing modules before running the bot
 install_missing_modules()
