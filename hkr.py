@@ -6,7 +6,9 @@ import logging
 REQUIRED_MODULES = [
     "telebot==0.0.4",
     "asyncio",
-    "ipaddress"
+    # "ipaddress"
+    "pyTelegramBotAPI==4.11.0",
+    "ipaddress",
 ]
 
 def install_missing_modules():
